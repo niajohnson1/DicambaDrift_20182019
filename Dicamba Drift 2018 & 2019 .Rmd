@@ -1,0 +1,217 @@
+---
+title: "Dicamba Drift 2018 & 2019"
+author: "Nia Johnson"
+date: "12/20/2021"
+output: html_document
+---
+
+```{r prep}
+Dicamba = read.csv("~/Desktop/Chapter 1/Dicamba2019&2018_.csv", fill = TRUE)
+install.packages("ggplot2")
+library("ggplot2")
+install.packages("plyr")
+library("plyr")
+install.packages("tidyr")
+library("tidyr")
+install.packages("car")
+library("car")
+install.packages("lsmeans")
+library("lsmeans")
+install.packages("lmerTest")
+library("lmerTest")
+install.packages("rcompanion")
+library("rcompanion")
+
+Dicamba$TRT <- as.factor(Dicamba$TRT)
+Dicamba$POP <- as.factor(Dicamba$POP)
+Dicamba$BLK <- as.factor(Dicamba$BLK)
+Dicamba$ID <- as.factor(Dicamba$ID)
+Dicamba$Year <- as.factor(Dicamba$Year)
+Dicamba$ML <- as.factor(Dicamba$ML)
+
+Licor = read.csv("~/Desktop/LICOR_C_2018.csv", fill = TRUE)
+Licor$Trt <- as.factor(Licor$Trt)
+Licor$Leaf <- as.factor(Licor$Leaf)
+Licor$BLK <- as.factor(Licor$BLK)
+Licor$ML <- as.factor(Licor$ML)
+Licor$Herbicide.1 <- as.factor(Licor$Herbicide.1)
+```
+
+
+```{r Added Calculations}
+#Resistance Estimates
+Dicamba$WflyResistance <- 1-Dicamba$Wfly
+Dicamba$HerbResistance <- 1-Dicamba$HerbDamage
+
+#GrowthRate
+Dicamba$GrowthRate <- ((Dicamba$Leaf3 - Dicamba$Leaf1) + (Dicamba$Height3 - Dicamba$Height1)) / 16 #weeks of growth
+
+#Means for Fitness and Growth Rate by Block
+Dicamba_aveg <- ddply(Dicamba, .(BLK), summarise, 
+                   meanFitness=mean(Seeds, na.rm=TRUE), meanGrowthRate=mean(GrowthRate, na.rm=TRUE))
+#Merge Datasets
+Dicamba <- merge(Dicamba, Dicamba_aveg, by=c("BLK"))
+
+#Calculate Relative Growth and Fitness
+Dicamba$RelFitness <- Dicamba$Seeds/(Dicamba$meanFitness)
+Dicamba$RelGrowth <- Dicamba$GrowthRate/(Dicamba$meanGrowthRate)
+
+#Calculate Photosythetic Assimilation
+Lic$ACI <- Lic$Photo/Lic$Ci
+
+```
+
+```{r Subets}
+#By Year with all Treatments
+Y2018 = subset(Dicamba, Year%in%c("2018"))
+Y2019 = subset(Dicamba, Year%in%c("2019"))
+
+#By Year and Dicamba only Treatments 
+DY2018 = subset(Dicamba, TRT%in%c("1", "0.5") & Year%in%c("2018"))
+DY2019 = subset(Dicamba, TRT%in%c("1", "0.5") & Year%in%c("2019"))
+
+#Dicamba Treatments 
+DY = subset(Dicamba, TRT%in%c("1", "0.5"))
+```
+
+```{r Herbivory Response to Drift Exposed Host }
+#Transformations
+ChewDam1 <- transformTukey(Y2018$ChewDamage)
+WflyAb1 <- transformTukey(Y2018$Wfly) 
+WflyAb2 <- transformTukey(Y2019$Wfly) 
+
+#Linear mixed model for Whitefly Adundance Analysis of Variables for 2018 
+linmmodl1 <- lmer(WflyAb1 ~  TRT * BLK + (1|ML) *TRT + (1|ML), data = Y2018, na.action = na.exclude)
+Anova(linmmodl1, type = "III", test.statistic="F") 
+summary(linmmodl1)
+
+#Linear mixed model for Chewing Damage Analysis of Variables for 2018 
+linmmodl2 <- lmer(ChewDam1 ~  TRT * BLK + (1|ML)*TRT + (1|ML), data = Y2018, na.action = na.exclude)
+Anova(linmmodl2, type = "III", test.statistic="F") 
+summary(linmmodl2)
+
+#Linear mixed model for Whitefly Abundance Analysis of Variables for 2019 
+linmmodl5.1 <- lmer(WflyAb2 ~  TRT * BLK + (1 |POP:ML) * TRT + (1 |POP:ML), data = Y2019, na.action = na.exclude)
+Anova(linmmodl5.1, type = "III", test.statistic="F") 
+summary(linmmodl5.1)
+
+```
+
+```{r Plant Performance in Response to Herbicide Drift}
+#Leaf count for yr 1
+hist(Y2018$Leaf3)
+Leaf1 <- transformTukey(Y2018$Leaf3) #p =  0.03505
+lmer1 <- lmer(Leaf1 ~  BLK* TRT + (1 | ML) * TRT, data = Y2018, na.action = na.exclude)
+Anova(lmer1, type = "III", test.statistic="F") 
+summary(lmer1)
+
+#Leaf count for yr 2
+hist(Y2019$Leaf3)
+Leaf2 <- transformTukey(Y2019$Leaf3) #p = 0.0364
+lmer2 <- lmer(Leaf2 ~  TRT * BLK +   (1|POP)*TRT + (1|POP:ML)*TRT, data = Y2019, na.action = na.exclude)
+Anova(lmer2, type = "III", test.statistic="F") 
+summary(lmer2) 
+
+#Height for yr1 
+hist(Y2018$Height3)
+Height1 <- transformTukey(Y2018$Height3) #p = 0.1897
+lmer3 <- lmer(Height1 ~  TRT * BLK + (1 | ML) *TRT, data = Y2018, na.action = na.exclude)
+Anova(lmer3, type = "III", test.statistic="F") 
+summary(lmer3) 
+
+#Height for yr2 - not super normal residuals
+hist(Y2019$Height3)
+Height2 <- transformTukey(Y2019$Height3) #p = 0.01059
+lmer4 <- lmer(Height2 ~  TRT * BLK + (1|POP) * TRT + (1 |POP:ML)* TRT, data = Y2019, na.action = na.exclude)
+Anova(lmer4, type = "III", test.statistic="F") 
+summary(lmer4) 
+
+#Width for yr1 
+hist(Y2018$Width.Avg)
+Width1 <- transformTukey(Y2018$Width.Avg) #p = 0.6734
+lmer5 <- lmer(Width1 ~  TRT * BLK + (1|ML) * TRT, data = Y2018, na.action = na.exclude)
+Anova(lmer5, type = "III", test.statistic="F") 
+summary(lmer5)
+
+#Width for yr2 
+hist(Y2019$Width.Avg)
+Width2 <- transformTukey(Y2019$Width.Avg) 
+lmer6 <- lmer(Width2 ~  TRT * BLK +   (1|POP)*TRT + (1|POP:ML)*TRT, data = Y2019, na.action = na.exclude)
+Anova(lmer6, type = "III", , test.statistic="F") 
+summary(lmer6)
+
+#Flower Number for yr1 
+hist(Y2018$Flower)
+Flower1 <- transformTukey(Y2018$Flower)
+lmer7 <- lmer(Flower1 ~  TRT * BLK + (1|ML) * TRT, data = Y2018, na.action = na.exclude)
+Anova(lmer7, type = "III", test.statistic="F")  
+summary(lmer7)
+
+#Flower Number for yr2 -> non- normal 
+hist(Y2019$Flower)
+Flower2 <- transformTukey(Y2019$Flower)
+lmer8 <- lmer(Flower2 ~  TRT * BLK +   (1|POP)*TRT + (1|POP:ML)*TRT, data = Y2019, na.action = na.exclude)
+Anova(lmer8, type = "III", test.statistic="F")  
+summary(lmer8)
+
+# Photosythetic Assimilation
+lmer12 <- lmer(ACI ~ Trt * BLK + (1|Trt:ML), data = Lic, na.action = na.exclude)
+Anova(lmer12, type = "III", test.statistic="F") 
+summary(lmer12)
+```
+
+```{r Plant Resistance and Genetic Variation}
+#Resistance Estimates
+Dicamba$WflyResistance <- 1-Dicamba$Wfly
+Dicamba$HerbResistance <- 1-Dicamba$HerbDamage
+
+#Variation for Whitefly Resistance 
+WflyRes <- transformTukey(Dicamba$WflyResistance)
+WflyVar <-lmer(WflyRes ~  TRT * BLK + (1|POP:ML) *TRT + (1|POP) *TRT , data = Dicamba, na.action = na.exclude)
+WflyVar2 <-lmer(WflyRes ~  TRT * BLK + (1|POP) *TRT , data = Dicamba, na.action = na.exclude)
+WflyVar3 <-lm(WflyRes ~  TRT * BLK , data = Dicamba, na.action = na.exclude)
+anova(WflyVar, WflyVar2, WflyVar3)
+
+#Variation for Herbicide Resistance 
+HerbRes <- transformTukey(DY$HerbResistance)
+HerbVar <-lmer(HerbRes ~  TRT * BLK  + (1|POP:ML) *TRT + (1|POP) *TRT , data = DY, na.action = na.exclude)
+HerbVar2 <-lmer(HerbRes ~  TRT * BLK  + (1|POP) *TRT , data = DY, na.action = na.exclude)
+HerbVar3 <-lm(HerbRes ~  TRT * BLK  , data = DY, na.action = na.exclude)
+anova(HerbVar, HerbVar2, HerbVar3)
+
+#Variation for Growth Rate
+Growth <- transformTukey(Dicamba$RelGrowth)
+GrowthVar <-lmer(Growth ~  TRT * BLK  + (1|POP:ML) *TRT + (1|POP) *TRT , data = Dicamba, na.action = na.exclude)
+GrowthVar2 <-lmer(Growth ~  TRT * BLK  + (1|POP) *TRT , data = Dicamba, na.action = na.exclude)
+GrowthVar3 <-lm(Growth ~  TRT * BLK  , data = Dicamba, na.action = na.exclude)
+anova(GrowthVar,GrowthVar2, GrowthVar3)
+```
+
+```{r Phenotypic Correlations}
+
+cor.test(DY$WflyResistance, DY$HerbResistance)
+cor.test(DY$WflyResistance, DY$RelGrowth)
+cor.test(DY$RelGrowth, DY$HerbResistance)
+```
+
+```{r Phenotypic Selection}
+#Standarize traits of interest - Resistance Traits
+Dicamba$StdWflyRes<-(Dicamba$WflyResistance-mean(Dicamba$WflyResistance,na.rm=TRUE))/sd(Dicamba$WflyResistance, na.rm=TRUE)
+Dicamba$StdHerbRes<-(Dicamba$HerbResistance-mean(Dicamba$HerbResistance,na.rm=TRUE))/sd(Dicamba$HerbResistance, na.rm=TRUE)
+
+#Transformed Relative Fitness for Dicamba Treatments
+Rel_Fit1 <- transformTukey(DY$RelFitness)
+
+#Linear Selection gradients for all dicamba treatments
+sec4 <-lm(Rel_Fit1 ~   StdWflyRes + StdHerbRes + RelGrowth, data = DY, na.action = na.exclude)
+Anova(sec4, type = "III", test.statistic="F")
+summary(sec4)
+
+#Quadratic Selection gradients for all dicamba treatments
+sec7 <-lm(Rel_Fit1 ~  I(StdWflyRes^2) * I(StdHerbRes^2)* I(RelGrowth^2), data = DY, na.action = na.exclude)
+Anova(sec7, type = "III", test.statistic="F")
+summary(sec7)
+
+```
+   
+
